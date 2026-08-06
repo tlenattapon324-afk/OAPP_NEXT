@@ -304,6 +304,14 @@
                     </div>
                   </div>
                   <% }) %>
+                  <div class="col-4">
+                    <div class="form-check mb-0">
+                      <input class="form-check-input" type="checkbox"
+                             id="holidayCheck" style="margin-top:2px">
+                      <label class="form-check-label" for="holidayCheck"
+                             style="font-size:0.82rem;color:#C0392B">วันหยุดนักขัตฤกษ์</label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -880,6 +888,7 @@ function clearForm() {
   if (tsClinic) tsClinic.setValue(''); else document.getElementById('clinicSel').value = '';
   document.getElementById('weekSel').value = '';
   document.querySelectorAll('.day-check').forEach(cb => cb.checked = false);
+  document.getElementById('holidayCheck').checked = false;
   updateToggleDaysBtn();
   if (selRow) selRow.classList.remove('row-sel');
   selRow = null; selData = null;
@@ -898,7 +907,7 @@ function getFormValues() {
     end_time:    getTimeVal('endTime'),
     check_time:  document.getElementById('checkTime').checked ? 'Y' : '0',
     note:       document.getElementById('noteText').value,
-    noHoliday:  false
+    holiday:    document.getElementById('holidayCheck').checked
   };
 }
 
@@ -907,14 +916,15 @@ async function createRecords() {
   const f = getFormValues();
   if (!f.clinic)           { showAlert('warning','กรุณาเลือกคลินิก'); return; }
   if (!f.start || !f.end)  { showAlert('warning','กรุณาระบุวันที่เริ่มต้นและสิ้นสุด'); return; }
-  if (!f.days.length)      { showAlert('warning','กรุณาเลือกอย่างน้อย 1 วัน'); return; }
+  if (!f.days.length && !f.holiday)
+                           { showAlert('warning','กรุณาเลือกอย่างน้อย 1 วัน หรือวันหยุดนักขัตฤกษ์'); return; }
   if (!f.limit || isNaN(parseInt(f.limit)))
                            { showAlert('warning','กรุณาระบุจำนวนจำกัด'); return; }
 
   // Step 1: preview
   const prev = await fetch('/api/preview-dates', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ start:f.start, end:f.end, days:f.days, week:f.week })
+    body: JSON.stringify({ start:f.start, end:f.end, days:f.days, week:f.week, holiday:f.holiday })
   });
   const pd = await prev.json();
   if (!pd.ok || !pd.dates.length) {
@@ -936,7 +946,7 @@ async function createRecords() {
     `คลินิก     : ${clinicTxt}\n` +
     `จำนวนจำกัด : ${f.limit} ราย/slot\n` +
     `เวลา       : ${f.start_time||'-'} — ${f.end_time||'-'}\n` +
-    `จำนวนวัน   : ${pd.count} วัน\n\n` +
+    `จำนวนวัน   : ${pd.count} วัน${f.holiday ? ' (รวมวันหยุดนักขัตฤกษ์)' : ''}\n\n` +
     `รายการวันที่ :\n${previewDates}\n\n` +
     `กด OK เพื่อยืนยันการ Insert ${pd.count} รายการ`
   );

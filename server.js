@@ -66,6 +66,7 @@ async function openConn(cfg) {
       host: d.host, port: parseInt(d.port)||3300,
       database: d.database, user: d.username, password: d.password,
       connectTimeout: 10000,
+      charset: 'tis620',   // DB ของ HOSxP ใช้ tis620 — ถ้าไม่ระบุ mysql2 จะเขียน/อ่านข้อความไทยผิดเพี้ยน
     });
   }
   if (t === 'postgresql') {
@@ -385,11 +386,40 @@ function buildDateList(startStr, endStr, days, weekNum) {
   return result;
 }
 
+// ── Helper: ดึงรายการวันหยุดนักขัตฤกษ์ในช่วงวันที่ จากตาราง holiday ──────────
+async function getHolidayDates(conn, active, startStr, endStr) {
+  // DATE_FORMAT/TO_CHAR บังคับคืน string 'YYYY-MM-DD' หลีกเลี่ยง timezone shift (เหมือน buildRecordsQuery)
+  const dateFmt = active === 'mysql'
+    ? `DATE_FORMAT(holiday_date, '%Y-%m-%d')`
+    : `TO_CHAR(holiday_date, 'YYYY-MM-DD')`;
+  const sql = active === 'mysql'
+    ? `SELECT ${dateFmt} AS d FROM holiday WHERE holiday_date BETWEEN ? AND ?`
+    : `SELECT ${dateFmt} AS d FROM holiday WHERE holiday_date BETWEEN $1 AND $2`;
+  const rows = await runQuery(conn, active, sql, [startStr, endStr]);
+  return rows.map(r => r.d).filter(Boolean);
+}
+
 // API – preview dates (ดูรายการวันที่จะถูก insert ก่อนสร้างจริง)
-app.post('/api/preview-dates', requireLogin, (req, res) => {
-  const { start, end, days, week } = req.body;
-  if (!start || !end || !days) return res.json({ ok: false, dates: [] });
-  const dates = buildDateList(start, end, days, week || null);
+app.post('/api/preview-dates', requireLogin, async (req, res) => {
+  const { start, end, days, week, holiday } = req.body;
+  const dayArr = Array.isArray(days) ? days : (days ? [days] : []);
+  if (!start || !end || (!dayArr.length && !holiday)) return res.json({ ok: false, dates: [] });
+
+  let dates = dayArr.length ? buildDateList(start, end, dayArr, week || null) : [];
+
+  if (holiday) {
+    try {
+      const cfg    = loadConfig();
+      const active = cfg.active || 'mysql';
+      const conn   = await openConn({ db_type: active, ...cfg });
+      const hdates = await getHolidayDates(conn, active, start, end);
+      try { await conn.end(); } catch (_) {}
+      dates = Array.from(new Set([...dates, ...hdates])).sort();
+    } catch (e) {
+      return res.json({ ok: false, dates: [], msg: 'ไม่สามารถตรวจสอบวันหยุดได้: ' + e.message });
+    }
+  }
+
   res.json({ ok: true, dates, count: dates.length });
 });
 
@@ -398,25 +428,34 @@ app.post('/api/create-records', requireLogin, async (req, res) => {
   const {
     clinic, start, end, days, week,
     limit, start_time, end_time, check_time,
-    note, noHoliday
+    note, holiday
   } = req.body;
 
   // ── Validate ──────────────────────────────────────────────────────────
   if (!clinic)       return res.json({ ok:false, msg:'กรุณาเลือกคลินิก' });
   if (!start||!end)  return res.json({ ok:false, msg:'กรุณาระบุวันที่เริ่มต้นและสิ้นสุด' });
   const dayArr = Array.isArray(days) ? days : (days ? [days] : []);
-  if (!dayArr.length) return res.json({ ok:false, msg:'กรุณาเลือกอย่างน้อย 1 วัน' });
+  if (!dayArr.length && !holiday)
+    return res.json({ ok:false, msg:'กรุณาเลือกอย่างน้อย 1 วัน หรือวันหยุดนักขัตฤกษ์' });
 
   // ── Build date list ────────────────────────────────────────────────────
-  const dates = buildDateList(start, end, dayArr, week || null);
-  if (!dates.length)
-    return res.json({ ok:false, msg:'ไม่พบวันที่ตรงตามเงื่อนไขที่เลือก' });
+  let dates = dayArr.length ? buildDateList(start, end, dayArr, week || null) : [];
 
   // ── Insert ─────────────────────────────────────────────────────────────
   try {
     const cfg    = loadConfig();
     const active = cfg.active || 'mysql';
     const conn   = await openConn({ db_type: active, ...cfg });
+
+    // รวมวันหยุดนักขัตฤกษ์จากตาราง holiday เข้ากับรายการวันที่ (ถ้าติ๊กเลือก)
+    if (holiday) {
+      const hdates = await getHolidayDates(conn, active, start, end);
+      dates = Array.from(new Set([...dates, ...hdates])).sort();
+    }
+    if (!dates.length) {
+      try { await conn.end(); } catch (_) {}
+      return res.json({ ok:false, msg:'ไม่พบวันที่ตรงตามเงื่อนไขที่เลือก' });
+    }
 
     let inserted = 0;
     const skipped = [];

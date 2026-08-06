@@ -1,6 +1,6 @@
 #define MyAppName      "ระบบจำกัดนัดคลินิก"
 #define MyAppNameEn    "oapp_limit"
-#define MyAppVersion   "1.1.0"
+#define MyAppVersion   "1.3.0"
 #define MyAppPublisher "oapp_limit"
 #define MyAppURL       "https://github.com/imhosxp4-byte/oapp_limit"
 #ifndef SourceDir
