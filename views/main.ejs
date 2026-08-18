@@ -309,7 +309,7 @@
                       <input class="form-check-input" type="checkbox"
                              id="holidayCheck" style="margin-top:2px">
                       <label class="form-check-label" for="holidayCheck"
-                             style="font-size:0.82rem;color:#C0392B">วันหยุดนักขัตฤกษ์</label>
+                             style="font-size:0.82rem;color:#C0392B">วันหยุดนักขัตฤกษ์ (จาก holiday)</label>
                     </div>
                   </div>
                 </div>
@@ -605,6 +605,15 @@ function fmtTime(v) {
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script>
+// ── API token: แนบอัตโนมัติกับทุก fetch ไป /api/* ────────────────────────
+// (ป้องกันการยิง URL /api/... ตรงๆ จากภายนอกเช่น Postman โดยไม่ผ่านหน้าเว็บนี้)
+const API_TOKEN = <%- JSON.stringify(apiToken || '') %>;
+function apiFetch(url, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (API_TOKEN) headers['X-API-Token'] = API_TOKEN;
+  return fetch(url, Object.assign({}, opts, { headers }));
+}
+
 // ── Day checkbox: เลือกทั้งหมด / ล้างทั้งหมด ─────────────────────────────
 function toggleAllDays() {
   const checks = [...document.querySelectorAll('.day-check')];
@@ -748,7 +757,7 @@ async function deleteSelected() {
   if (!selRow || !selData) { showAlert('warning','กรุณาเลือกรายการก่อน'); return; }
   if (!confirm('ต้องการลบรายการที่เลือกหรือไม่?')) return;
   try {
-    const res  = await fetch(`/api/records/${selData.oapp_limit_id}`, { method:'DELETE' });
+    const res  = await apiFetch(`/api/records/${selData.oapp_limit_id}`, { method:'DELETE' });
     const data = await res.json();
     if (data.ok) {
       selRow.remove(); selRow = null; selData = null;
@@ -780,7 +789,7 @@ async function filterRecords() {
     if (dt) qs.set('date_to',   dt);
     if (cl) qs.set('clinic',    cl);
 
-    const res  = await fetch('/api/records?' + qs.toString());
+    const res  = await apiFetch('/api/records?' + qs.toString());
     const data = await res.json();
 
     if (!data.ok) { showAlert('danger', 'ค้นหาล้มเหลว: ' + data.msg); return; }
@@ -922,7 +931,7 @@ async function createRecords() {
                            { showAlert('warning','กรุณาระบุจำนวนจำกัด'); return; }
 
   // Step 1: preview
-  const prev = await fetch('/api/preview-dates', {
+  const prev = await apiFetch('/api/preview-dates', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ start:f.start, end:f.end, days:f.days, week:f.week, holiday:f.holiday })
   });
@@ -959,7 +968,7 @@ async function createRecords() {
   btn.disabled = true;
 
   try {
-    const res  = await fetch('/api/create-records', {
+    const res  = await apiFetch('/api/create-records', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(f)
     });
@@ -1019,7 +1028,7 @@ async function deleteFromModal() {
   if (!id) return;
   if (!confirm('ต้องการลบรายการนี้หรือไม่?')) return;
   try {
-    const res  = await fetch(`/api/records/${id}`, { method:'DELETE' });
+    const res  = await apiFetch(`/api/records/${id}`, { method:'DELETE' });
     const data = await res.json();
     if (data.ok) {
       showAlert('success','ลบรายการเรียบร้อยแล้ว');
@@ -1049,7 +1058,7 @@ async function saveRecord() {
   const isEdit = !!id;
   const url    = isEdit ? `/api/records/${id}` : '/api/records';
   try {
-    const res  = await fetch(url, {
+    const res  = await apiFetch(url, {
       method: isEdit ? 'PUT' : 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload)
@@ -1126,7 +1135,7 @@ async function bulkDelete() {
   if (!ids.length) return;
   if (!confirm(`ต้องการลบ ${ids.length} รายการที่เลือกหรือไม่?\nการดำเนินการนี้ไม่สามารถยกเลิกได้`)) return;
   try {
-    const res  = await fetch('/api/records/bulk', {
+    const res  = await apiFetch('/api/records/bulk', {
       method:'DELETE', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ ids })
     });
@@ -1176,7 +1185,7 @@ async function saveBulkEdit() {
     limit_note: document.getElementById('bNote').value,
   };
   try {
-    const res  = await fetch('/api/records/bulk', {
+    const res  = await apiFetch('/api/records/bulk', {
       method:'PUT', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ ids, fields, apply })
     });

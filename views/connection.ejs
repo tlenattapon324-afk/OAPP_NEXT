@@ -89,6 +89,42 @@
           </div>
         </div>
 
+        <!-- API Token -->
+        <div class="card mt-4">
+          <div class="card-header app-section-header fw-bold">
+            <i class="bi bi-key-fill me-2"></i>API Token
+          </div>
+          <div class="card-body py-3">
+            <p class="mb-3" style="font-size:0.9rem;color:var(--text-muted)">
+              ใช้ป้องกันการเรียก API ตรงๆ (เช่นจาก Postman) โดยไม่ผ่านหน้าเว็บ —
+              token จะขึ้นต้นด้วยรหัสสถานพยาบาล ตามด้วยรหัสสุ่มอีก 10 หลัก
+              ถ้ายังไม่ได้สร้าง token ระบบจะยังไม่บังคับตรวจสอบ
+            </p>
+            <div class="row g-3 align-items-end">
+              <div class="col-md-4">
+                <label class="form-label">รหัสสถานพยาบาล</label>
+                <input type="text" name="hospcode" class="form-control"
+                       value="<%= cfg.hospcode||'' %>" placeholder="เช่น 10670" maxlength="20">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">API Token ปัจจุบัน</label>
+                <div class="input-group">
+                  <input type="text" id="apiTokenBox" class="form-control" readonly
+                         value="<%= cfg.api_token||'' %>" placeholder="ยังไม่ได้สร้าง token">
+                  <button type="button" class="btn btn-outline-secondary" onclick="copyToken()" style="min-height:40px">
+                    <i class="bi bi-clipboard"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <button type="submit" name="action" value="gen_token" class="btn btn-warning w-100" style="min-height:40px">
+                  <i class="bi bi-arrow-repeat me-1"></i>Gen Token
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Right: buttons -->
@@ -182,6 +218,12 @@ function togglePass(id, btn) {
   const show = el.type === 'password';
   el.type = show ? 'text' : 'password';
   btn.innerHTML = show ? '<i class="bi bi-eye-slash fs-5"></i>' : '<i class="bi bi-eye fs-5"></i>';
+}
+function copyToken() {
+  const box = document.getElementById('apiTokenBox');
+  if (!box.value) return;
+  box.select();
+  navigator.clipboard.writeText(box.value).catch(() => document.execCommand('copy'));
 }
 switchTab(ACTIVE_INIT);
 </script>

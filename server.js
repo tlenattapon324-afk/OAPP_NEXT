@@ -24,6 +24,8 @@ app.use(session({
 const CONFIG_FILE = path.join(__dirname, 'db_config.json');
 const DEFAULT_CFG = {
   active: 'mysql',
+  hospcode:  '',
+  api_token: '',
   mysql:      { host: 'localhost', port: 3300, database: '', username: '', password: '' },
   postgresql: { host: 'localhost', port: 5432, database: '', username: '', password: '' }
 };
@@ -43,13 +45,35 @@ function loadConfig() {
         return m;
       }
       const c = JSON.parse(JSON.stringify(DEFAULT_CFG));
-      c.active     = data.active || c.active;
+      c.active     = data.active   || c.active;
+      c.hospcode   = data.hospcode || '';
+      c.api_token  = data.api_token || '';
       if (data.mysql)      Object.assign(c.mysql,      data.mysql);
       if (data.postgresql) Object.assign(c.postgresql, data.postgresql);
       return c;
     }
   } catch (_) {}
   return JSON.parse(JSON.stringify(DEFAULT_CFG));
+}
+
+// ── API token: <รหัสสถานพยาบาล><random 10 หลัก> ──────────────────────────────
+function genApiToken(hospcode) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const rnd   = crypto.randomBytes(10);
+  let suffix  = '';
+  for (let i = 0; i < 10; i++) suffix += chars[rnd[i] % chars.length];
+  return `${String(hospcode || '').trim()}${suffix}`;
+}
+
+// ── Middleware: บังคับ token สำหรับเรียก API ตรงๆ (เช่นจาก Postman) ──────────
+// ถ้ายังไม่ได้ gen token ไว้ (api_token ว่าง) จะไม่บังคับ — ไม่กระทบระบบเดิม
+function requireApiToken(req, res, next) {
+  const cfg   = loadConfig();
+  const token = (cfg.api_token || '').trim();
+  if (!token) return next();
+  const provided = req.get('X-API-Token') || req.query.token || '';
+  if (provided === token) return next();
+  return res.status(401).json({ ok: false, msg: 'Unauthorized: ต้องระบุ token ที่ถูกต้อง' });
 }
 
 function saveConfig(cfg) {
@@ -151,14 +175,43 @@ async function verifyLogin(username, password) {
   }
 }
 
-// ── Verify connection-settings login (hardcoded admin credentials) ──────────
-const CONN_USER = 'admin';
-const CONN_PASS = 'appointment';
+// ── Verify connection-settings login (task 77) ──────────────────────────────
+async function verifyConnLogin(username, password) {
+  const cfg    = loadConfig();
+  const active = cfg.active || 'mysql';
+  const conn   = await openConn({ db_type: active, ...cfg });
+  try {
+    const sql1 = active === 'mysql'
+      ? 'SELECT officer_id, officer_login_password_md5 FROM officer WHERE officer_login_name = ? LIMIT 1'
+      : 'SELECT officer_id, officer_login_password_md5 FROM officer WHERE officer_login_name = $1 LIMIT 1';
+    const rows = await runQuery(conn, active, sql1, [username]);
+    if (!rows || rows.length === 0) return { ok: false, reason: 'invalid' };
 
-function verifyConnLogin(username, password) {
-  if (username === CONN_USER && password === CONN_PASS)
+    const storedHash = (rows[0].officer_login_password_md5 || rows[0][1] || '').trim();
+    if (storedHash.toLowerCase() !== md5(password).toLowerCase())
+      return { ok: false, reason: 'invalid' };
+
+    const officerId = rows[0].officer_id ?? rows[0][0];
+    const sql2 = active === 'mysql'
+      ? `SELECT COUNT(*) AS cnt
+         FROM officer_group_task_access t
+         INNER JOIN officer_group g ON g.officer_group_id = t.officer_group_id
+         INNER JOIN officer_group_list l ON l.officer_group_id = g.officer_group_id
+         WHERE t.officer_task_id = '77' AND l.officer_id = ?`
+      : `SELECT COUNT(*) AS cnt
+         FROM officer_group_task_access t
+         INNER JOIN officer_group g ON g.officer_group_id = t.officer_group_id
+         INNER JOIN officer_group_list l ON l.officer_group_id = g.officer_group_id
+         WHERE t.officer_task_id = '77' AND l.officer_id = $1`;
+    const aRows = await runQuery(conn, active, sql2, [officerId]);
+    const cnt77 = parseInt(aRows[0]?.cnt ?? aRows[0]?.[0] ?? 0);
+    console.log(`[ConnLogin] user=${username} officer_id=${officerId} task77=${cnt77}`);
+
+    if (cnt77 === 0) return { ok: false, reason: 'no_access' };
     return { ok: true };
-  return { ok: false, reason: 'invalid' };
+  } finally {
+    try { await conn.end(); } catch (_) {}
+  }
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────────
@@ -198,17 +251,23 @@ app.post('/login', async (req, res) => {
 
 app.get('/logout', (req, res) => { req.session.destroy(); res.redirect('/login'); });
 
-// ── API: Connection settings auth (hardcoded admin) ───────────────────────
-app.post('/api/conn-auth', (req, res) => {
+// ── API: Connection settings auth (task 77) ────────────────────────────────
+app.post('/api/conn-auth', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.json({ ok: false, reason: 'invalid', msg: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
-  const result = verifyConnLogin(username, password);
-  if (result.ok) {
-    req.session.connAuthed = true;
-    return res.json({ ok: true });
+  try {
+    const result = await verifyConnLogin(username, password);
+    if (result.ok) {
+      req.session.connAuthed = true;
+      return res.json({ ok: true });
+    }
+    if (result.reason === 'no_access')
+      return res.json({ ok: false, reason: 'no_access' });
+    return res.json({ ok: false, reason: 'invalid', msg: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+  } catch (e) {
+    return res.json({ ok: false, reason: 'error', msg: `เชื่อมต่อฐานข้อมูลไม่ได้: ${e.message}` });
   }
-  return res.json({ ok: false, reason: 'invalid', msg: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
 });
 
 // Connection settings
@@ -220,8 +279,11 @@ app.get('/connection', (req, res) => {
 app.post('/connection', async (req, res) => {
   if (!req.session.connAuthed) return res.redirect('/');
   const { action, active } = req.body;
+  const curCfg = loadConfig();
   const newCfg = {
     active: active || 'mysql',
+    hospcode:  (req.body.hospcode !== undefined ? req.body.hospcode : curCfg.hospcode) || '',
+    api_token: curCfg.api_token || '',
     mysql:      { host: req.body.mysql_host||'', port: req.body.mysql_port||'3300',
                   database: req.body.mysql_database||'', username: req.body.mysql_username||'',
                   password: req.body.mysql_password||'' },
@@ -241,6 +303,16 @@ app.post('/connection', async (req, res) => {
     saveConfig(newCfg);
     return res.render('connection', { cfg: newCfg,
       alert: { type:'success', msg:'บันทึกการตั้งค่าเรียบร้อยแล้ว' }});
+  }
+  if (action === 'gen_token') {
+    if (!newCfg.hospcode.trim()) {
+      return res.render('connection', { cfg: newCfg,
+        alert: { type:'warning', msg:'กรุณาระบุรหัสสถานพยาบาลก่อน gen token' }});
+    }
+    newCfg.api_token = genApiToken(newCfg.hospcode);
+    saveConfig(newCfg);
+    return res.render('connection', { cfg: newCfg,
+      alert: { type:'success', msg:'สร้าง API token ใหม่เรียบร้อยแล้ว — คัดลอกไว้ใช้กับทุกเครื่องที่เรียก API นี้' }});
   }
   if (action === 'open_main') { saveConfig(newCfg); return res.redirect('/main'); }
   if (action === 'save_back') {
@@ -291,6 +363,7 @@ function buildRecordsQuery(active, { dateFrom, dateTo, clinic } = {}) {
 // Main
 app.get('/main', requireLogin, async (req, res) => {
   let clinics=[], records=[], dbError=null;
+  const apiToken = (loadConfig().api_token || '');
   try {
     const cfg    = loadConfig();
     const active = cfg.active || 'mysql';
@@ -313,11 +386,11 @@ app.get('/main', requireLogin, async (req, res) => {
     try { await conn.end(); } catch (_) {}
   } catch (e) { dbError = e.message; }
 
-  res.render('main', { user: req.session.user, clinics, records, dbError });
+  res.render('main', { user: req.session.user, clinics, records, dbError, apiToken });
 });
 
 // API – filter records (AJAX)
-app.get('/api/records', requireLogin, async (req, res) => {
+app.get('/api/records', requireLogin, requireApiToken, async (req, res) => {
   try {
     const cfg    = loadConfig();
     const active = cfg.active || 'mysql';
@@ -400,7 +473,7 @@ async function getHolidayDates(conn, active, startStr, endStr) {
 }
 
 // API – preview dates (ดูรายการวันที่จะถูก insert ก่อนสร้างจริง)
-app.post('/api/preview-dates', requireLogin, async (req, res) => {
+app.post('/api/preview-dates', requireLogin, requireApiToken, async (req, res) => {
   const { start, end, days, week, holiday } = req.body;
   const dayArr = Array.isArray(days) ? days : (days ? [days] : []);
   if (!start || !end || (!dayArr.length && !holiday)) return res.json({ ok: false, dates: [] });
@@ -424,7 +497,7 @@ app.post('/api/preview-dates', requireLogin, async (req, res) => {
 });
 
 // API – create records (INSERT oapp_limit)
-app.post('/api/create-records', requireLogin, async (req, res) => {
+app.post('/api/create-records', requireLogin, requireApiToken, async (req, res) => {
   const {
     clinic, start, end, days, week,
     limit, start_time, end_time, check_time,
@@ -561,7 +634,7 @@ app.get('/status', (req, res) =>
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── API: add single record ────────────────────────────────────────────────
-app.post('/api/records', requireLogin, async (req, res) => {
+app.post('/api/records', requireLogin, requireApiToken, async (req, res) => {
   try {
     const { oapp_date, oapp_clinic, oapp_limit, start_time, end_time, check_time, limit_note } = req.body;
     if (!oapp_date)   return res.json({ ok:false, msg:'กรุณาระบุวันที่' });
@@ -589,7 +662,7 @@ app.post('/api/records', requireLogin, async (req, res) => {
 });
 
 // ── API: bulk update records ──────────────────────────────────────────────
-app.put('/api/records/bulk', requireLogin, async (req, res) => {
+app.put('/api/records/bulk', requireLogin, requireApiToken, async (req, res) => {
   try {
     const { ids, fields, apply } = req.body;
     if (!ids || !ids.length)
@@ -666,7 +739,7 @@ app.put('/api/records/bulk', requireLogin, async (req, res) => {
 });
 
 // ── API: bulk delete records ──────────────────────────────────────────────
-app.delete('/api/records/bulk', requireLogin, async (req, res) => {
+app.delete('/api/records/bulk', requireLogin, requireApiToken, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids || !ids.length)
@@ -685,7 +758,7 @@ app.delete('/api/records/bulk', requireLogin, async (req, res) => {
 });
 
 // ── API: update record ────────────────────────────────────────────────────
-app.put('/api/records/:id', requireLogin, async (req, res) => {
+app.put('/api/records/:id', requireLogin, requireApiToken, async (req, res) => {
   try {
     const id = req.params.id;
     const { oapp_date, oapp_clinic, oapp_limit, start_time, end_time, check_time, limit_note } = req.body;
@@ -713,7 +786,7 @@ app.put('/api/records/:id', requireLogin, async (req, res) => {
 });
 
 // ── API: delete record ────────────────────────────────────────────────────
-app.delete('/api/records/:id', requireLogin, async (req, res) => {
+app.delete('/api/records/:id', requireLogin, requireApiToken, async (req, res) => {
   try {
     const id  = req.params.id;
     const cfg = loadConfig();
@@ -967,7 +1040,7 @@ app.get('/debug/access-check', async (req, res) => {
 });
 
 // ── Debug: ตรวจสอบ raw type ของ oapp_date ─────────────────────────────────
-app.get('/api/debug-date', async (req, res) => {
+app.get('/api/debug-date', requireApiToken, async (req, res) => {
   try {
     const cfg    = loadConfig();
     const active = cfg.active || 'mysql';
