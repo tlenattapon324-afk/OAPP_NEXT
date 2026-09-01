@@ -132,17 +132,14 @@ Write-OK "Copied to ตัวติดตั้ง\"
 
 # ── Step 7: GitHub Release (optional) ──────────────────────────────────────
 if ($Release) {
-    Write-Step "Creating GitHub Release v1.4.0"
-    $tag  = "v1.4.0"
+    Write-Step "Creating GitHub Release v1.5.0"
+    $tag  = "v1.5.0"
     $notes = @"
-## สิ่งที่เพิ่มใหม่ใน v1.4.0
+## สิ่งที่เพิ่มใหม่ใน v1.5.0
 
 ### ฟีเจอร์ใหม่
-- คืนค่าการตรวจสอบสิทธิ์เข้าหน้า "ตั้งค่าการเชื่อมต่อ" ด้วย task_id='77' จากฐานข้อมูลจริง (officer_group_task_access) แทนรหัสผ่านที่ hardcode ไว้ — ถ้าไม่มีสิทธิ์จะแสดง popup แจ้งให้ติดต่อ Admin
-- เพิ่มระบบ API Token ป้องกันการเรียก API ตรงๆ (เช่นจาก Postman) — gen token ได้จากหน้าตั้งค่าการเชื่อมต่อ ขึ้นต้นด้วยรหัสสถานพยาบาลตามด้วยรหัสสุ่ม 10 หลัก การใช้งานผ่านหน้าเว็บปกติไม่ได้รับผลกระทบ
-
-### การปรับปรุงเล็กน้อย
-- ปรับข้อความ checkbox "วันหยุดนักขัตฤกษ์" ให้ระบุแหล่งที่มา (จาก holiday)
+- แก้ปัญหาติดตั้งครั้งแรกแล้วเข้าหน้า "ตั้งค่าการเชื่อมต่อ" ไม่ได้ (เพราะต้องเช็คสิทธิ์ task 77 ผ่าน DB ที่ยังไม่ได้ตั้งค่า) — ถ้า config DB ยังว่างเปล่าอยู่จริง ระบบจะเปิดให้เข้าหน้าตั้งค่าได้ทันทีโดยไม่ต้อง login พอบันทึกค่า DB จริงครั้งแรกแล้ว จะกลับไปบังคับ login + เช็คสิทธิ์ task 77 ตามปกติทันที
+- ไม่มี hardcoded credential (admin/appointment) หลงเหลืออยู่ในระบบอีกต่อไป
 
 ### การติดตั้ง
 1. ดาวน์โหลด ``Oapp-Limit-Full.exe``
@@ -152,7 +149,7 @@ if ($Release) {
 > ติดตั้งได้แบบ **Offline** ทั้งหมด ไม่ต้องใช้ internet
 "@
     gh release create $tag $exePath `
-        --title "ระบบจำกัดนัดคลินิก v1.4.0" `
+        --title "ระบบจำกัดนัดคลินิก v1.5.0" `
         --notes $notes
     Write-OK "Release created"
     gh release view $tag --json assets --jq '.assets[].browserDownloadUrl'

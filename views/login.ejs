@@ -162,7 +162,10 @@ function togglePwd() {
   else                        { p.type = 'password'; e.className = 'bi bi-eye'; }
 }
 
+const FIRST_RUN = <%- JSON.stringify(typeof firstRun !== 'undefined' && !!firstRun) %>;
 function openConnLogin() {
+  // ติดตั้งครั้งแรก (ยังไม่เคยตั้งค่า DB) — เข้าหน้าตั้งค่าได้ตรงๆ ไม่ต้อง login
+  if (FIRST_RUN) { window.location.href = '/connection'; return; }
   document.getElementById('connUser').value = '';
   document.getElementById('connPwd').value  = '';
   const al = document.getElementById('connAlert');
