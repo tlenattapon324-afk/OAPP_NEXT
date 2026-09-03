@@ -182,7 +182,9 @@ async function verifyLogin(username, password) {
 function isConfigBlank(cfg) {
   const t = cfg.active || 'mysql';
   const d = cfg[t] || {};
-  return !d.host && !d.database && !d.username;
+  // host มักถูกตั้งเป็น "localhost" เป็นค่าเริ่มต้นตอนติดตั้งอยู่แล้ว (ไม่ว่าง)
+  // ตัวชี้วัดจริงว่ายังไม่เคยตั้งค่าคือ database/username ยังว่างอยู่
+  return !d.database && !d.username;
 }
 
 // ── Verify connection-settings login (task 77) ──────────────────────────────
@@ -283,14 +285,21 @@ app.post('/api/conn-auth', async (req, res) => {
 
 // Connection settings
 // ติดตั้งครั้งแรก (config ยังว่างเปล่า) เข้าหน้านี้ได้ตรงๆ โดยไม่ต้อง login —
-// พอบันทึกค่า DB จริงแล้ว จะกลับไปบังคับ login ตรวจสิทธิ์ task 77 ตามปกติ
+// พอเข้ามาแล้วจะปลดล็อก session นี้ไว้เลย (connAuthed=true) กันไม่ให้ถูกเตะออก
+// กลางคันตอน save DB จริงครั้งแรก (ซึ่งทำให้ config ไม่ว่างแล้ว) — รอบถัดไปที่
+// เปิดหน้านี้ใหม่ (session ใหม่/หมดอายุ) จะกลับไปบังคับ login เช็ค task 77 ตามปกติ
+function allowConnAccess(req) {
+  if (req.session.connAuthed) return true;
+  if (isConfigBlank(loadConfig())) { req.session.connAuthed = true; return true; }
+  return false;
+}
 app.get('/connection', (req, res) => {
-  if (!req.session.connAuthed && !isConfigBlank(loadConfig())) return res.redirect('/');
+  if (!allowConnAccess(req)) return res.redirect('/');
   res.render('connection', { cfg: loadConfig(), alert: null });
 });
 
 app.post('/connection', async (req, res) => {
-  if (!req.session.connAuthed && !isConfigBlank(loadConfig())) return res.redirect('/');
+  if (!allowConnAccess(req)) return res.redirect('/');
   const { action, active } = req.body;
   const curCfg = loadConfig();
   const newCfg = {
