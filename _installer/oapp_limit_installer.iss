@@ -1,6 +1,6 @@
 #define MyAppName      "ระบบจำกัดนัดคลินิก"
 #define MyAppNameEn    "oapp_limit"
-#define MyAppVersion   "1.5.1"
+#define MyAppVersion   "1.5.2"
 #define MyAppPublisher "oapp_limit"
 #define MyAppURL       "https://github.com/imhosxp4-byte/oapp_limit"
 #ifndef SourceDir
@@ -17,6 +17,7 @@ DefaultDirName={autopf}\oapp_limit
 DefaultGroupName={#MyAppName}
 OutputDir={#SourceDir}\_output
 OutputBaseFilename=Oapp-Limit-Full
+SetupIconFile={#SourceDir}\static\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -47,11 +48,11 @@ Source: "{#SourceDir}\_installer\node-setup.msi";  DestDir: "{tmp}"; Flags: dele
 
 [Icons]
 ; Start Menu
-Name: "{group}\{#MyAppName}";                Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs""";     WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 14
+Name: "{group}\{#MyAppName}";                Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs""";     WorkingDir: "{app}"; IconFilename: "{app}\static\app.ico"
 Name: "{group}\หยุดเซิร์ฟเวอร์";            Filename: "{sys}\wscript.exe"; Parameters: """{app}\stop_server.vbs""";  WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 131
 Name: "{group}\ถอนการติดตั้ง";              Filename: "{uninstallexe}"
 ; Desktop shortcut (always created)
-Name: "{autodesktop}\{#MyAppName}";          Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs""";     WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 14
+Name: "{autodesktop}\{#MyAppName}";          Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs""";     WorkingDir: "{app}"; IconFilename: "{app}\static\app.ico"
 
 [Run]
 ; Install Node.js silently only if NOT already installed

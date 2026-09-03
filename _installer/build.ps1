@@ -132,14 +132,13 @@ Write-OK "Copied to ตัวติดตั้ง\"
 
 # ── Step 7: GitHub Release (optional) ──────────────────────────────────────
 if ($Release) {
-    Write-Step "Creating GitHub Release v1.5.1"
-    $tag  = "v1.5.1"
+    Write-Step "Creating GitHub Release v1.5.2"
+    $tag  = "v1.5.2"
     $notes = @"
-## สิ่งที่เพิ่มใหม่ใน v1.5.1
+## สิ่งที่เพิ่มใหม่ใน v1.5.2
 
-### แก้ไขข้อบกพร่อง (ต่อจาก v1.5.0)
-- แก้บั๊ก "เข้าหน้าตั้งค่าครั้งแรกไม่ได้" ที่ยังไม่หายสนิท — default db_config.json ตอนติดตั้งมี host เป็น "localhost" (ไม่ว่าง) ทำให้ระบบเข้าใจผิดว่าตั้งค่าแล้ว จึงไม่เปิดทางให้เข้าตรงๆ ตามที่ตั้งใจ — เปลี่ยนมาเช็คแค่ database/username แทน
-- แก้บั๊ก "กด Gen Token ไม่ได้" ระหว่างตั้งค่าครั้งแรก — พอบันทึกค่า DB จริงครั้งแรก session จะถูกเตะออกกลางคันเพราะยังไม่เคยถูกทำเครื่องหมายว่าอนุญาต ตอนนี้พอเข้าหน้าตั้งค่าได้ครั้งแรกแล้ว จะปลดล็อก session ไว้ให้ทำงานต่อได้จนจบ (test/gen token/save) โดยไม่ถูกเตะออกกลางคัน
+### ปรับปรุง
+- เพิ่มไอคอนแอปแบบกำหนดเอง (การ์ดโค้งมนไล่สีน้ำเงิน-เขียวตามธีมแอป พร้อมกากบาททางการแพทย์สีขาว) แทนไอคอนเริ่มต้นของ Windows — ใช้กับ shortcut บน Desktop/Start Menu, ตัวติดตั้งเอง, และ favicon ของหน้าเว็บทุกหน้า
 
 ### การติดตั้ง
 1. ดาวน์โหลด ``Oapp-Limit-Full.exe``
@@ -149,7 +148,7 @@ if ($Release) {
 > ติดตั้งได้แบบ **Offline** ทั้งหมด ไม่ต้องใช้ internet
 "@
     gh release create $tag $exePath `
-        --title "ระบบจำกัดนัดคลินิก v1.5.1" `
+        --title "ระบบจำกัดนัดคลินิก v1.5.2" `
         --notes $notes
     Write-OK "Release created"
     gh release view $tag --json assets --jq '.assets[].browserDownloadUrl'
